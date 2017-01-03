@@ -125,8 +125,8 @@ if __name__=='__main__':
     setting_sim['cov_x_cost'] = .5
     setting_sim['mean_x'] = 0.
     setting_sim['mean_x_cost'] = 0.       
-    setting_sim['flag_char_dyn'] = 0
-    setting_sim['flag_char_cost_dyn'] = 0
+    setting_sim['flag_char_dyn'] = 1
+    setting_sim['flag_char_cost_dyn'] = 1
        
     mso_s = ModelSelectionOligopoly_Simulate(setting_sim=setting_sim)    
     mso_s.SimulateData()
