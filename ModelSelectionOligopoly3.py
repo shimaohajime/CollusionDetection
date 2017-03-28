@@ -13,6 +13,8 @@ import os
 import csv
 import sys
 import scipy.optimize
+import time
+import datetime
 
 import math
 import itertools
@@ -68,15 +70,15 @@ class ModelSelectionOligopoly_Simulate:
         return data_comb, data_col
         
     def RecoverData(self,data_comb, data_col):
-        data_recovered = {}
+        data_dic = {}
         for item in data_col.keys():
-            data_recovered[item] = data_comb[:,data_col[item]]
-            if data_recovered[item].shape[1]==1:
-                data_recovered[item]=data_recovered[item].flatten()
-        return data_recovered
+            data_dic[item] = data_comb[:,data_col[item]]
+            if data_dic[item].shape[1]==1:
+                data_dic[item]=data_dic[item].flatten()
+        return data_dic
 
     def clusters(self, l, K):
-    #Taken from http://stackoverflow.com/questions/18353280/iterator-over-all-partitions-into-k-groups
+    #Taken from http//stackoverflow.com/questions/18353280/iterator-over-all-partitions-into-k-groups
         if l.size>0:
             prev = None
             for t in self.clusters(l[1:], K):
@@ -94,7 +96,7 @@ class ModelSelectionOligopoly_Simulate:
 
 if __name__=='__main__':
     def clusters(l, K):
-    #Taken from http://stackoverflow.com/questions/18353280/iterator-over-all-partitions-into-k-groups
+    #Taken from http//stackoverflow.com/questions/18353280/iterator-over-all-partitions-into-k-groups
         if l.size>0:
             prev = None
             for t in clusters(l[1:], K):
@@ -111,52 +113,100 @@ if __name__=='__main__':
     
     
     #setting for simulation
-    setting_sim={}
-    setting_sim['nmkt'] = 50               
-    setting_sim['nprod'] = 3
-    setting_sim['col_group'] = np.array([0,1,2]) #True model
-    setting_sim['Dpara'] = np.array([-4.,10.,2.,2.]) #price, const, char1, char2,... #nchar
-    setting_sim['Spara'] = np.array([15.,2.,2.,     2.,2.,2.]) #nchar+nchar_cost-1. -1 for constant
-    setting_sim['var_xi'] = .3
-    setting_sim['var_lambda'] = 1.       
-    setting_sim['var_x'] = 1.
-    setting_sim['var_x_cost'] = 1.
-    setting_sim['cov_x'] = .5
-    setting_sim['cov_x_cost'] = .5
-    setting_sim['mean_x'] = 0.
-    setting_sim['mean_x_cost'] = 0.       
-    setting_sim['flag_char_dyn'] = 1
-    setting_sim['flag_char_cost_dyn'] = 1
-       
-    mso_s = ModelSelectionOligopoly_Simulate(setting_sim=setting_sim)    
-    mso_s.SimulateData()
-    Data_All,data_col = mso_s.MergeData(mso_s.Data_simulated)
+    setting_sim_temp={}
+    setting_sim_temp['nmkt'] = [25,50,100]               
+    setting_sim_temp['nprod'] = [3]
+    setting_sim_temp['Dpara'] = [np.array([-4.,10.,2.,2.])] #price, const, char1, char2,... #nchar
+    setting_sim_temp['Spara'] = [np.array([15.,2.,2.,     2.,2.,2.])] #nchar+nchar_cost-1. -1 for constant
+    setting_sim_temp['var_xi'] = [.3]
+    setting_sim_temp['var_lambda'] = [1.]       
+    setting_sim_temp['var_x'] = [1.]
+    setting_sim_temp['var_x_cost'] = [1.]
+    setting_sim_temp['cov_x'] = [.5]
+    setting_sim_temp['cov_x_cost'] = [.5]
+    setting_sim_temp['mean_x'] = [0.]
+    setting_sim_temp['mean_x_cost'] = [0.]       
+    setting_sim_temp['flag_char_dyn'] = [1]
+    setting_sim_temp['flag_char_cost_dyn'] = [1]
+    settings_sim = model_selection.ParameterGrid(setting_sim_temp)
+    n_settings_sim = len(list(settings_sim))
 
+               
     #setting for estimation    
     setting_est = {}
-    setting_est['ivtype'] = 0
+    setting_est['ivtype'] = 1
     setting_est['weighting']='invA'
     setting_est['Display'] = False   
-    setting_est['data_col'] = data_col
-    setting_est['data_col_test'] = data_col
-    setting_est['init_guess'] = np.append(setting_sim['Dpara'],setting_sim['Spara']  )
-    setting_est['para_true'] = np.append(setting_sim['Dpara'],setting_sim['Spara']  )
     #setting for cv, gmm
     setting_cv = {}
-    hypara_cv = {'groups':mso_s.Data_simulated['mktid']}
-    #Models
-    models = []
-    prods = np.arange(setting_sim['nprod'])
-    for ngroup in range(1,setting_sim['nprod']+1):            
-        for g in neclusters(prods, ngroup):
-            col = np.zeros(setting_sim['nprod'])
-            for i in range(ngroup):
-                col[g[i]] = i
-            models.append({'col_group':col})
 
+
+    #Repeat
+    rep = 100
+    cv_choice_p_all = []
+    gmm_choice_p_all = []
+
+    start=time.time()    
+    for setting_i in range(n_settings_sim):
+        setting_sim = list(settings_sim)[setting_i]
+        setting_est['init_guess'] = np.append(setting_sim['Dpara'],setting_sim['Spara']  )
+        setting_est['para_true'] = np.append(setting_sim['Dpara'],setting_sim['Spara']  )
+        #Models
+        models = []
+        prods = np.arange(setting_sim['nprod'])
+        for ngroup in range(1,setting_sim['nprod']+1):            
+            for g in neclusters(prods, ngroup):
+                col = np.zeros(setting_sim['nprod'])
+                for i in range(ngroup):
+                    col[g[i]] = i
+                models.append({'col_group':col})
+        N_models = len(list(models))   
+
+        cv_choice_p = np.zeros([N_models, N_models])
+        gmm_choice_p = np.zeros([N_models, N_models])
+        for model_i in range(N_models):
+            true_model = list(models)[model_i]
+            setting_sim['col_group'] = true_model['col_group'] #True model
+            cv_score = np.zeros([N_models, rep])
+            gmm_score = np.zeros([N_models, rep])
+            cv_choice = np.zeros(rep)
+            gmm_choice = np.zeros(rep)
+            for r in range(rep):        
+                mso_s = ModelSelectionOligopoly_Simulate(setting_sim=setting_sim)    
+                mso_s.SimulateData()
+                Data_All,data_col = mso_s.MergeData(mso_s.Data_simulated)
+                setting_est['data_col'] = data_col
+                setting_est['data_col_test'] = data_col
+                hypara_cv = {'groups':mso_s.Data_simulated['mktid']}
+                ms_cv = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='GroupKFold',cvsetting=setting_cv,cvhypara=hypara_cv)
+                ms_cv.fit()
+                cv_score[:,r] = ms_cv.score_models
+        
+                ms_gmm = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='InSample',cvsetting=setting_cv,cvhypara=hypara_cv)
+                ms_gmm.fit()
+                gmm_score[:,r] = ms_gmm.score_models
+                         
+                cv_choice[r] = np.where(np.min( cv_score[:,r] )==cv_score[:,r])[0][0]
+                gmm_choice[r] = np.where(np.min( gmm_score[:,r] )==gmm_score[:,r])[0][0]
+            
+            cv_cp = np.bincount(cv_choice.astype(int))
+            while len(cv_cp)<N_models:
+                cv_cp = np.append(cv_cp, 0.0)
+            gmm_cp = np.bincount(gmm_choice.astype(int))
+            while len(gmm_cp)<N_models:
+                gmm_cp = np.append(gmm_cp, 0.0)
+            cv_choice_p[model_i,:] = cv_cp/rep
+            gmm_choice_p[model_i,:] = gmm_cp/rep
+            
+        cv_choice_p_all.append(cv_choice_p)
+        gmm_choice_p_all.append(gmm_choice_p)
+                   
+        
+    end = time.time()
+    time_calc = end-start
+    print('Total Time:'+str(time_calc))
+    DateCalc=datetime.date.today().strftime('%b-%d-%Y')
+    np.save('cv_choice_p_all_'+DateCalc+'.npy',cv_choice_p_all)
+    np.save('gmm_choice_p_all_'+DateCalc+'.npy',gmm_choice_p_all)
+            
     
-    ms = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='GroupKFold',cvsetting=setting_cv,cvhypara=hypara_cv)
-    ms.fit()
-    #def __init__(self, EstClass, Data_All, models, setting, cvtype='KFold',cvsetting=None)
-    #def __init__(self, data_col=None, data_col_test=None,\
-    #             ivtype=0, weighting='invA', col_group=None, colmat=None,Display=False)

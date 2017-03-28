@@ -92,8 +92,6 @@ class EstimateBresnahan:
             self.colmat = self.GenColMat(self.col_group)  
 
         #Read Data
-        print('self.data_col:'+str(self.data_col))        
-        print('Data:'+str(Data))
         self.x_demand = Data[:,self.data_col['x_demand']]
         self.x_cost_only = Data[:,self.data_col['x_cost_only']]
         self.x_cost = Data[:,self.data_col['x_cost']]
@@ -104,12 +102,6 @@ class EstimateBresnahan:
         
         self.mktid = self.ShapeID(self.mktid)
         
-        #print('self.x_cost:'+str(self.x_cost))
-        #print('self.x_cost.shape:'+str(self.x_cost.shape))
-        print('self.mktid:'+str(self.mktid))
-        print('self.mktid.shape:'+str(self.mktid.shape))
-        print('self.mktid==0:'+str(self.mktid==0))
-
         #Get Parameters
         self.nobs = self.share.shape[0]
         self.nmkt = np.unique(self.mktid).shape[0]
@@ -353,7 +345,7 @@ class EstimateBresnahan:
                 c = np.delete(c,0,1) #drop constant
                 self.IV_temp_test[self.mktid_test==i,:] = c
         if self.ivtype==1:
-            self.IV_temp = self.x_cost        
+            self.IV_temp_test = self.x_cost_test        
 
         self.IV_test = np.tile(self.IV_temp_test, (2,1))
         self.niv_test = self.IV_test.shape[1] 
@@ -367,13 +359,10 @@ class EstimateBresnahan:
         lam = self.CalcLam_test(self.Dpara_sol,self.Spara_sol)
         gmmresid = np.append(xi,lam)
         
-        temp5 = np.dot(gmmresid.T, self.IV_test)
-        print('gmmresid.shape'+str(gmmresid.shape))
-        print('self.IV_test.shape'+str(self.IV_test.shape))
-        print('temp5.shape'+str(temp5.shape))
-        print('self.invA.shape'+str(self.invA.shape))
-        f = np.dot(np.dot(temp5, self.invA),temp5.T) #or invA_test??
-        return f
+        moment_vec = np.dot(gmmresid.T, self.IV_test)
+        f = np.dot(np.dot( (moment_vec/self.nobs_test), self.invA),(moment_vec.T)/self.nobs_test  ) #or invA_test??
+        J = f*self.nobs_test
+        return J,moment_vec
         
     #---for score------
     def CalcXi_test(self, Dpara):
