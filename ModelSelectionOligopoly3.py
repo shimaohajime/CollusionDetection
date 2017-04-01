@@ -114,15 +114,27 @@ if __name__=='__main__':
     
     #setting for simulation
     setting_sim_temp={}
-    setting_sim_temp['nmkt'] = [25,50,100]               
+    #setting_sim_temp['nmkt'] = [25,50,100]
+    setting_sim_temp['nmkt'] = [50]               
+    #setting_sim_temp['nprod'] = [3]
     setting_sim_temp['nprod'] = [3]
-    setting_sim_temp['Dpara'] = [np.array([-4.,10.,2.,2.])] #price, const, char1, char2,... #nchar
-    setting_sim_temp['Spara'] = [np.array([15.,2.,2.,     2.,2.,2.])] #nchar+nchar_cost-1. -1 for constant
+    #setting_sim_temp['Dpara'] = [np.array([-4.,10.,2.,2.])] #price, const, char1, char2,... #nchar
+    setting_sim_temp['Dpara'] = [np.array([-2.,  2.,    2.,2.])] #price, const, char1, char2,... #nchar
+    #setting_sim_temp['Spara'] = [np.array([10.,2.,2.,     2.,2.,2.])] #nchar+nchar_cost-1. -1 for constant
+    setting_sim_temp['Spara'] = [np.array([7.,   0.,0.,     .3,.3,.3])] #nchar+nchar_cost-1. -1 for constant
+    setting_sim_temp['x_dist'] = ['Exponential']
+    setting_sim_temp['x_cost_dist'] = ['Exponential']
+    
+    #setting_sim_temp['var_xi'] = [.3]
     setting_sim_temp['var_xi'] = [.3]
-    setting_sim_temp['var_lambda'] = [1.]       
+    #setting_sim_temp['var_lambda'] = [1.]       
+    setting_sim_temp['var_lambda'] = [.3]       
+    #setting_sim_temp['var_x'] = [1.]
     setting_sim_temp['var_x'] = [1.]
+    #setting_sim_temp['var_x_cost'] = [1.]
     setting_sim_temp['var_x_cost'] = [1.]
-    setting_sim_temp['cov_x'] = [.5]
+    #setting_sim_temp['cov_x'] = [.5]
+    setting_sim_temp['cov_x'] = [.0]
     setting_sim_temp['cov_x_cost'] = [.5]
     setting_sim_temp['mean_x'] = [0.]
     setting_sim_temp['mean_x_cost'] = [0.]       
@@ -142,7 +154,7 @@ if __name__=='__main__':
 
 
     #Repeat
-    rep = 100
+    rep = 50
     cv_choice_p_all = []
     gmm_choice_p_all = []
 
@@ -165,16 +177,19 @@ if __name__=='__main__':
         cv_choice_p = np.zeros([N_models, N_models])
         gmm_choice_p = np.zeros([N_models, N_models])
         for model_i in range(N_models):
+            
             true_model = list(models)[model_i]
             setting_sim['col_group'] = true_model['col_group'] #True model
             cv_score = np.zeros([N_models, rep])
             gmm_score = np.zeros([N_models, rep])
             cv_choice = np.zeros(rep)
             gmm_choice = np.zeros(rep)
-            for r in range(rep):        
+            for r in range(rep):
+                start_rep = time.time()
                 mso_s = ModelSelectionOligopoly_Simulate(setting_sim=setting_sim)    
                 mso_s.SimulateData()
                 Data_All,data_col = mso_s.MergeData(mso_s.Data_simulated)
+                #print('share',mso_s.Data_simulated['share'])
                 setting_est['data_col'] = data_col
                 setting_est['data_col_test'] = data_col
                 hypara_cv = {'groups':mso_s.Data_simulated['mktid']}
@@ -188,6 +203,11 @@ if __name__=='__main__':
                          
                 cv_choice[r] = np.where(np.min( cv_score[:,r] )==cv_score[:,r])[0][0]
                 gmm_choice[r] = np.where(np.min( gmm_score[:,r] )==gmm_score[:,r])[0][0]
+                
+                end_rep = time.time()
+                time_rep = end_rep-start_rep
+                print('###########rep %i, time for one rep:%f######################'%(r, time_rep))
+
             
             cv_cp = np.bincount(cv_choice.astype(int))
             while len(cv_cp)<N_models:

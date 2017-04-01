@@ -24,7 +24,8 @@ class SimulateBresnahan:
     Dpara = np.array([-5.,1.,-1.]),var_xi = .3, var_lambda = 1.,\
     Spara = np.array([10.,1.,2.]), var_x=1. , cov_x=.5, var_x_cost=1., cov_x_cost=.5,\
     mean_x = 0., mean_x_cost = 0.,\
-    flag_char_dyn = 0, flag_char_cost_dyn=0):
+    x_dist='Normal',x_cost_dist='Normal',\
+    flag_char_dyn = 0, flag_char_cost_dyn=0, savedata=0):
         self.nmkt = nmkt                
         #self.nchar = nchar_input
         #self.nchar_cost = nchar_cost_input        
@@ -62,6 +63,9 @@ class SimulateBresnahan:
         self.mean_x = mean_x
         self.mean_x_cost = mean_x_cost
         
+        self.x_dist = x_dist
+        self.x_cost_dist = x_cost_dist
+        
         self.flag_char_dyn = flag_char_dyn
         self.flag_char_cost_dyn = flag_char_cost_dyn
         
@@ -70,30 +74,43 @@ class SimulateBresnahan:
         self.flag_OptFailed = 0
         self.flag_NegativeMC = 0
         self.flag_DeltaSingular = 0
+        self.savedata = savedata
     
     def CreateChar(self):
         m = self.mean_x * np.ones(self.nchar-1)
         v = self.cov_x * np.ones([self.nchar-1,self.nchar-1])
         np.fill_diagonal(v, self.var_x )
         if self.flag_char_dyn==0:
-            chars = np.random.multivariate_normal(m,v,self.nprod) #Assuming static char
+            if self.x_dist=='Normal':
+                chars = np.random.multivariate_normal(m,v,self.nprod) #Assuming static char
+            elif self.x_dist=='Exponential':
+                chars = np.random.exponential(scale=1., size=[self.nprod, self.nchar-1])
             chars = np.c_[np.ones([self.nprod,1]), chars]
             self.char = chars[self.prodid]
         if self.flag_char_dyn==1:
-            chars = np.random.multivariate_normal(m,v,self.nobs) #Assuming dynamic char
+            if self.x_dist=='Normal':
+                chars = np.random.multivariate_normal(m,v,self.nobs) #Assuming dynamic char
+            elif self.x_dist=='Exponential':
+                chars = np.random.exponential(scale=1.,size=[self.nobs, self.nchar-1])
             chars = np.c_[np.ones([self.nobs,1]), chars]
             self.char = chars
             
-    def CreateCharCost(self): 
+    def CreateCharCost(self): #04/01 changed distribution to exponential
         m = self.mean_x_cost * np.ones(self.nchar_cost-1)
         v = self.cov_x_cost * np.ones([self.nchar_cost-1,self.nchar_cost-1])
         np.fill_diagonal(v, self.var_x_cost )
         if self.flag_char_cost_dyn == 0:
-            chars_cost = np.random.multivariate_normal(m,v,self.nprod) #Assuming static char
+            if self.x_cost_dist=='Normal':
+                chars_cost = np.random.multivariate_normal(m,v,self.nprod) #Assuming static char
+            elif self.x_cost_dist=='Exponential':
+                chars_cost = np.random.exponential(scale=1.,size=[self.nprod, self.nchar_cost-1])
             chars_cost = np.c_[np.ones([self.nprod,1]), chars_cost]
             self.char_cost = chars_cost[self.prodid]
         if self.flag_char_cost_dyn == 1:
-            chars_cost = np.random.multivariate_normal(m,v,self.nobs) #Assuming dynamic char
+            if self.x_cost_dist=='Normal':
+                chars_cost = np.random.multivariate_normal(m,v,self.nobs) #Assuming dynamic char
+            elif self.x_cost_dist=='Exponential':
+                chars_cost = np.random.exponential(scale=1.,size=[self.nobs, self.nchar_cost-1])
             chars_cost = np.c_[np.ones([self.nobs,1]), chars_cost]
             self.char_cost = chars_cost
         
@@ -143,9 +160,11 @@ class SimulateBresnahan:
         OwnD = self.Dpara[0]*self.Share_mkt(Pricevec_mkt, m_id)*(1. - self.Share_mkt(Pricevec_mkt, m_id)) 
         a = np.tile(self.Share_mkt(Pricevec_mkt, m_id),self.nprod).reshape([self.nprod,self.nprod])
         b = np.repeat(self.Share_mkt(Pricevec_mkt, m_id),self.nprod).reshape([self.nprod,self.nprod])
-        c = - self.Dpara[0] * a*b ###Dpara[0] for price not constant
+        c = - self.Dpara[0] * a*b ###Dpara[0] for price, not constant
         Delta = c *self.colmat        
         np.fill_diagonal( Delta, OwnD)
+
+        #print('share',self.Share_mkt(Pricevec_mkt, m_id))
         
         #self.Delta = Delta
         try:
@@ -160,6 +179,7 @@ class SimulateBresnahan:
         a = Pricevec_mkt.flatten()
         b = MCvec_mkt.flatten()
         deltainv = self.DeltaInv(Pricevec_mkt, m_id)
+        self.deltainv = deltainv
         c = np.dot(deltainv , self.Share_mkt(Pricevec_mkt, m_id) )
         return a - b - c
     
@@ -217,8 +237,8 @@ class SimulateBresnahan:
             
         self.Data = {'x_demand':self.char,'x_cost_only':self.char_cost,'x_cost':self.char_all,\
         'share':self.ShareEquil,'price':self.PriceEquil,'mktid':self.mktid,'prodid':self.prodid}
-
-        self.SaveData()
+        if self.savedata==1:
+            self.SaveData()
             
     def SaveData(self):
         os.chdir(os.path.dirname( os.path.abspath( __file__ ) )+'\data')
