@@ -22,7 +22,7 @@ class SimulateBresnahan:
     
     def __init__(self,nmkt = 2, nprod = 3, colmat=None, col_group=None,\
     Dpara = np.array([-5.,1.,-1.]),var_xi = .3, var_lambda = 1.,\
-    Spara = np.array([10.,1.,2.]), var_x=1. , cov_x=.5, var_x_cost=1., cov_x_cost=.5,\
+    Spara = np.array([10.,1.,2.]), var_x=1. , cov_x=.5, var_x_cost=1., cov_x_cost=.5, cov_x_bwprod=.0,\
     mean_x = 0., mean_x_cost = 0.,\
     x_dist='Normal',x_cost_dist='Normal',\
     flag_char_dyn = 0, flag_char_cost_dyn=0, savedata=0):
@@ -62,6 +62,7 @@ class SimulateBresnahan:
         self.cov_x_cost = cov_x_cost
         self.mean_x = mean_x
         self.mean_x_cost = mean_x_cost
+        self.cov_x_bwprod = cov_x_bwprod
         
         self.x_dist = x_dist
         self.x_cost_dist = x_cost_dist
@@ -76,25 +77,33 @@ class SimulateBresnahan:
         self.flag_DeltaSingular = 0
         self.savedata = savedata
     
-    def CreateChar(self):
-        m = self.mean_x * np.ones(self.nchar-1)
-        v = self.cov_x * np.ones([self.nchar-1,self.nchar-1])
+    def CreateChar(self):#7/18 correlation between products instead of chars
+        #m = self.mean_x * np.ones(self.nchar-1)
+        #v = self.cov_x * np.ones([self.nchar-1,self.nchar-1])
+        #np.fill_diagonal(v, self.var_x )
+        m = self.mean_x * np.ones(self.nprod)
+        v = self.cov_x_bwprod * np.ones([self.nprod,self.nprod])#correlation between products instead of chars
         np.fill_diagonal(v, self.var_x )
         if self.flag_char_dyn==0:
             if self.x_dist=='Normal':
-                chars = np.random.multivariate_normal(m,v,self.nprod) #Assuming static char
+                #chars = np.random.multivariate_normal(m,v,self.nprod) #Assuming static char
+                chars = np.random.multivariate_normal(m,v,self.nchar-1).T #correlation between products instead of chars
             elif self.x_dist=='Exponential':
                 chars = np.random.exponential(scale=1., size=[self.nprod, self.nchar-1])
             chars = np.c_[np.ones([self.nprod,1]), chars]
             self.char = chars[self.prodid]
         if self.flag_char_dyn==1:
             if self.x_dist=='Normal':
-                chars = np.random.multivariate_normal(m,v,self.nobs) #Assuming dynamic char
+                #chars = np.random.multivariate_normal(m,v,self.nobs) #Assuming dynamic char
+                chars = np.zeros([self.nobs, self.nchar-1])#correlation between products instead of chars
+                for m_id in range(self.nmkt):
+                    chars_mkt = np.random.multivariate_normal(m,v,self.nchar-1).T
+                    chars[self.mktid==m_id] = chars_mkt
             elif self.x_dist=='Exponential':
                 chars = np.random.exponential(scale=1.,size=[self.nobs, self.nchar-1])
             chars = np.c_[np.ones([self.nobs,1]), chars]
             self.char = chars
-            
+                        
     def CreateCharCost(self): #04/01 changed distribution to exponential
         m = self.mean_x_cost * np.ones(self.nchar_cost-1)
         v = self.cov_x_cost * np.ones([self.nchar_cost-1,self.nchar_cost-1])
@@ -113,6 +122,17 @@ class SimulateBresnahan:
                 chars_cost = np.random.exponential(scale=1.,size=[self.nobs, self.nchar_cost-1])
             chars_cost = np.c_[np.ones([self.nobs,1]), chars_cost]
             self.char_cost = chars_cost
+
+    def CreateCharCost_mkt(self): 
+        m = self.mean_x_cost * np.ones(self.nchar_cost-1)
+        v = self.cov_x_cost * np.ones([self.nchar_cost-1,self.nchar_cost-1])
+        np.fill_diagonal(v, self.var_x_cost )
+        if self.x_cost_dist=='Normal':
+            chars_cost = np.random.multivariate_normal(m,v,self.nprod) #Assuming static char
+        elif self.x_cost_dist=='Exponential':
+            chars_cost = np.random.exponential(scale=1.,size=[self.nprod, self.nchar_cost-1])
+        chars_cost = np.c_[np.ones([self.nprod,1]), chars_cost]
+        return chars_cost
         
     def CreateErrors(self):
         m = np.zeros(2)
@@ -120,6 +140,14 @@ class SimulateBresnahan:
         error = np.random.multivariate_normal(m,v,self.nobs)
         self.xi = error[:,0]
         self.lam = error[:,1]
+
+    def CreateLam_mkt(self):
+        lam = np.random.normal(0.,np.sqrt(self.var_lambda),self.nprod)
+        return lam
+
+    def CreateXi(self):
+        error = np.random.multivariate_normal(0,np.sqrt(self.var_xi),self.nobs)
+        self.xi = error
         
     def CreateCost(self):
         para = self.Spara
@@ -130,6 +158,19 @@ class SimulateBresnahan:
             #sys.exit('Negative Marginal Cost')
             self.flag_NegativeMC=1
             return
+
+    def CreateCost_mkt(self,m_id):
+        para = self.Spara
+        char_d = self.char[self.mktid==m_id]
+        char_cost = self.CreateCharCost_mkt()
+        char = np.c_[char_d, char_cost[:,1:]]
+        lam = self.CreateLam_mkt()
+        MC = np.dot(char,para) + lam
+        if np.any(MC<0):
+            #sys.exit('Negative Marginal Cost')
+            self.flag_NegativeMC=1
+            return
+        return char_cost, MC
         
     def Demand(self,PriceVec):
         p_char = np.c_[PriceVec,self.char]
@@ -163,16 +204,13 @@ class SimulateBresnahan:
         c = - self.Dpara[0] * a*b ###Dpara[0] for price, not constant
         Delta = c *self.colmat        
         np.fill_diagonal( Delta, OwnD)
-
-        #print('share',self.Share_mkt(Pricevec_mkt, m_id))
-        
-        #self.Delta = Delta
         try:
             f = -np.linalg.inv(Delta) 
         except np.linalg.linalg.LinAlgError:
             self.flag_DeltaSingular = 1
             print('Delta singular')
             return np.ones_like(Delta).astype(int) #just to let the code run.
+        self.flag_DeltaSingular = 0
         return f
     
     def FOC_vec(self,Pricevec_mkt, MCvec_mkt, m_id):
@@ -192,29 +230,45 @@ class SimulateBresnahan:
     def Simulate(self):
         self.CreateErrors()
         self.CreateChar()
-        self.CreateCharCost()
-        self.CreateCost()
+        #self.CreateCharCost()
+        #self.CreateCost()
         if self.flag_NegativeMC==1:
             return
         
         self.PriceEquil = np.zeros([self.nobs,1])
         self.ShareEquil = np.zeros([self.nobs,1])
         
+        self.char_cost = np.zeros([self.nobs,self.nchar_cost])
         for i in range(self.nmkt):
             print('----------market '+str(i)+'----------')
-            MCvec_mkt = self.MC[self.mktid==i]
-            guess = MCvec_mkt*1.1
-            print('MCvec_mkt:'+str(MCvec_mkt))
-            #temp = scipy.optimize.fmin(self.make_FOC_obj(), x0=guess,\
-            #ftol=1e-4, xtol=1e-4, maxiter=50000, maxfun=50000, args=(MCvec_mkt,i,),full_output=True)
-            #p = temp[0]
-            ###################
-            bnd = np.tile( np.array([0,None]), self.nprod).reshape([self.nprod,2])
-            temp = scipy.optimize.minimize(self.make_FOC_obj(), x0=guess,args=(MCvec_mkt,i,),method='SLSQP', bounds=bnd,\
-            options={'ftol':1e-10, 'maxiter':5000, 'disp':'False'} \
-            )
-            if self.flag_DeltaSingular==1 or self.flag_OptFailed==1:
-                return
+            flag_SimFailed=1
+            while flag_SimFailed==1:
+                #MCvec_mkt = self.MC[self.mktid==i]
+                self.char_cost[self.mktid==i,:], MCvec_mkt = self.CreateCost_mkt(i)
+                guess = MCvec_mkt*1.1
+                print('MCvec_mkt:'+str(MCvec_mkt))
+                #temp = scipy.optimize.fmin(self.make_FOC_obj(), x0=guess,\
+                #ftol=1e-4, xtol=1e-4, maxiter=50000, maxfun=50000, args=(MCvec_mkt,i,),full_output=True)
+                #p = temp[0]
+                ###################
+                bnd = np.tile( np.array([0,None]), self.nprod).reshape([self.nprod,2])
+                temp = scipy.optimize.minimize(self.make_FOC_obj(), x0=guess,args=(MCvec_mkt,i,),method='SLSQP', bounds=bnd,\
+                options={'ftol':1e-10, 'maxiter':5000, 'disp':'False'} \
+                )
+                if temp.fun>0.01:
+                    self.flag_OptFailed = 1
+                    print('Optimization Failed')
+                else:
+                    self.flag_OptFailed = 0
+                    
+                if self.flag_DeltaSingular==1 or self.flag_OptFailed==1:
+                    flag_SimFailed=1
+                    print('Re-drawing')
+                else:
+                    flag_SimFailed=0
+            
+            #if self.flag_DeltaSingular==1 or self.flag_OptFailed==1:
+            #    return
             
             self.temp = temp
             #print(temp)
@@ -222,10 +276,12 @@ class SimulateBresnahan:
             ###################
             print('Pricevec_mkt:'+str(p))
             print('Markup:'+str(p-MCvec_mkt))
+            '''
             if temp.fun>0.01:
                 self.flag_OptFailed = 1
                 print('Optimization Failed')
                 return
+            '''
             self.PriceEquil[self.mktid==i] = np.array([p]).T
             self.ShareEquil[self.mktid==i] = np.array([ self.Share_mkt(p, i) ]).T
 
@@ -234,7 +290,9 @@ class SimulateBresnahan:
             print('----Outside share close to zero----')
         if np.any(self.ShareEquil==0):
             print('----Share zero----')
-            
+
+        self.char_all = np.c_[self.char, self.char_cost[:,1:]]
+    
         self.Data = {'x_demand':self.char,'x_cost_only':self.char_cost,'x_cost':self.char_all,\
         'share':self.ShareEquil,'price':self.PriceEquil,'mktid':self.mktid,'prodid':self.prodid}
         if self.savedata==1:

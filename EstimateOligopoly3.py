@@ -163,7 +163,10 @@ class EstimateBresnahan:
             init_guess = self.init_guess
         except AttributeError:
             init_guess = np.ones(self.npara)
-            
+        
+        print('-------'+str(self.col_group)+'--------------')
+        
+        
         #######
         self.para_sol = scipy.optimize.fmin(self.make_gmmobj(), x0=init_guess,ftol=1e-6,xtol=1e-6,maxiter=5000000 )
         #######
@@ -184,7 +187,7 @@ class EstimateBresnahan:
         self.Spara_true = self.para_true[self.nchar_demand+1:]
         print('Dpara_sol:'+str(self.Dpara_sol))
         print('Spara_sol:'+str(self.Spara_sol))
-
+        print('-----------------------------------')
         xi = self.CalcXi(self.Dpara_sol)
         lam = self.CalcLam(self.Dpara_sol,self.Spara_sol)
         gmmresid = np.append(xi,lam)

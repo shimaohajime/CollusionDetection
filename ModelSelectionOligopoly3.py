@@ -115,27 +115,31 @@ if __name__=='__main__':
     #setting for simulation
     setting_sim_temp={}
     #setting_sim_temp['nmkt'] = [25,50,100]
-    setting_sim_temp['nmkt'] = [50]               
+    setting_sim_temp['nmkt'] = [100]               
     #setting_sim_temp['nprod'] = [3]
     setting_sim_temp['nprod'] = [3]
     #setting_sim_temp['Dpara'] = [np.array([-4.,10.,2.,2.])] #price, const, char1, char2,... #nchar
-    setting_sim_temp['Dpara'] = [np.array([-2.,  2.,    2.,2.])] #price, const, char1, char2,... #nchar
+    #setting_sim_temp['Dpara'] = [np.array([-2.,  2.,    2.,2.])] #price, const, char1, char2,... #nchar
+    setting_sim_temp['Dpara'] = [np.array([-2.,  2.,    5.,5.])] #price, const, char1, char2,... #nchar
     #setting_sim_temp['Spara'] = [np.array([10.,2.,2.,     2.,2.,2.])] #nchar+nchar_cost-1. -1 for constant
     setting_sim_temp['Spara'] = [np.array([7.,   0.,0.,     .3,.3,.3])] #nchar+nchar_cost-1. -1 for constant
-    setting_sim_temp['x_dist'] = ['Exponential']
-    setting_sim_temp['x_cost_dist'] = ['Exponential']
+    #setting_sim_temp['x_dist'] = ['Exponential']
+    setting_sim_temp['x_dist'] = ['Normal']
+    setting_sim_temp['x_cost_dist'] = ['Normal']
     
     #setting_sim_temp['var_xi'] = [.3]
-    setting_sim_temp['var_xi'] = [.3]
+    setting_sim_temp['var_xi'] = [1.]
     #setting_sim_temp['var_lambda'] = [1.]       
-    setting_sim_temp['var_lambda'] = [.3]       
+    setting_sim_temp['var_lambda'] = [1.]       
     #setting_sim_temp['var_x'] = [1.]
     setting_sim_temp['var_x'] = [1.]
     #setting_sim_temp['var_x_cost'] = [1.]
     setting_sim_temp['var_x_cost'] = [1.]
     #setting_sim_temp['cov_x'] = [.5]
     setting_sim_temp['cov_x'] = [.0]
-    setting_sim_temp['cov_x_cost'] = [.5]
+    setting_sim_temp['cov_x_bwprod'] = [.5]
+    #setting_sim_temp['cov_x_cost'] = [.5]
+    setting_sim_temp['cov_x_cost'] = [.0]
     setting_sim_temp['mean_x'] = [0.]
     setting_sim_temp['mean_x_cost'] = [0.]       
     setting_sim_temp['flag_char_dyn'] = [1]
@@ -150,11 +154,11 @@ if __name__=='__main__':
     setting_est['weighting']='invA'
     setting_est['Display'] = False   
     #setting for cv, gmm
-    setting_cv = {}
+    setting_cv = {'n_splits':2}
 
 
     #Repeat
-    rep = 50
+    rep = 10
     cv_choice_p_all = []
     gmm_choice_p_all = []
 
@@ -178,7 +182,11 @@ if __name__=='__main__':
         gmm_choice_p = np.zeros([N_models, N_models])
         for model_i in range(N_models):
             
+            ###For test###
+            model_i = 1
+            
             true_model = list(models)[model_i]
+            
             setting_sim['col_group'] = true_model['col_group'] #True model
             cv_score = np.zeros([N_models, rep])
             gmm_score = np.zeros([N_models, rep])
@@ -188,14 +196,19 @@ if __name__=='__main__':
                 start_rep = time.time()
                 mso_s = ModelSelectionOligopoly_Simulate(setting_sim=setting_sim)    
                 mso_s.SimulateData()
+                #sys.exit()
                 Data_All,data_col = mso_s.MergeData(mso_s.Data_simulated)
                 #print('share',mso_s.Data_simulated['share'])
                 setting_est['data_col'] = data_col
                 setting_est['data_col_test'] = data_col
+
+                print('++++++++++++++CV++++++++++++++')
                 hypara_cv = {'groups':mso_s.Data_simulated['mktid']}
                 ms_cv = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='GroupKFold',cvsetting=setting_cv,cvhypara=hypara_cv)
                 ms_cv.fit()
                 cv_score[:,r] = ms_cv.score_models
+                        
+                print('++++++++++++++GMM++++++++++++++')
         
                 ms_gmm = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='InSample',cvsetting=setting_cv,cvhypara=hypara_cv)
                 ms_gmm.fit()
@@ -207,6 +220,8 @@ if __name__=='__main__':
                 end_rep = time.time()
                 time_rep = end_rep-start_rep
                 print('###########rep %i, time for one rep:%f######################'%(r, time_rep))
+                
+            sys.exit()
 
             
             cv_cp = np.bincount(cv_choice.astype(int))
