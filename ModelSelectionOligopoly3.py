@@ -115,7 +115,7 @@ if __name__=='__main__':
     #setting for simulation
     setting_sim_temp={}
     #setting_sim_temp['nmkt'] = [25,50,100]
-    setting_sim_temp['nmkt'] = [100]               
+    setting_sim_temp['nmkt'] = [100,200]               
     #setting_sim_temp['nprod'] = [3]
     setting_sim_temp['nprod'] = [3]
     #setting_sim_temp['Dpara'] = [np.array([-4.,10.,2.,2.])] #price, const, char1, char2,... #nchar
@@ -158,9 +158,13 @@ if __name__=='__main__':
 
 
     #Repeat
-    rep = 10
+    rep = 100
     cv_choice_p_all = []
     gmm_choice_p_all = []
+    cv_score_mean_all = []
+    gmm_score_mean_all = []
+    
+    est_warning_all = []
 
     start=time.time()    
     for setting_i in range(n_settings_sim):
@@ -177,15 +181,27 @@ if __name__=='__main__':
                     col[g[i]] = i
                 models.append({'col_group':col})
         N_models = len(list(models))   
+        #temp
+        models_true = [{'col_group': np.array([ 0,  0,  0])}, {'col_group': np.array([ 0,  0, 1])},{'col_group': np.array([ 0,1,2])}]
+        N_models_true = len(list(models_true))   
 
-        cv_choice_p = np.zeros([N_models, N_models])
-        gmm_choice_p = np.zeros([N_models, N_models])
-        for model_i in range(N_models):
+        #cv_choice_p = np.zeros([N_models, N_models])
+        #gmm_choice_p = np.zeros([N_models, N_models])
+        #cv_score_mean = np.zeros([N_models, N_models])
+        #gmm_score_mean = np.zeros([N_models, N_models])
+
+        cv_choice_p = np.ones([N_models_true, N_models])*99
+        gmm_choice_p = np.ones([N_models_true, N_models])*99
+        cv_score_mean = np.zeros([N_models_true, N_models])
+        gmm_score_mean = np.zeros([N_models_true, N_models])
+        est_warning = np.zeros([N_models_true, rep])
+        #for model_i in range(N_models):
+        for model_i in range(N_models_true):
             
             ###For test###
-            model_i = 1
+            #model_i = 1
             
-            true_model = list(models)[model_i]
+            true_model = list(models_true)[model_i]
             
             setting_sim['col_group'] = true_model['col_group'] #True model
             cv_score = np.zeros([N_models, rep])
@@ -201,27 +217,32 @@ if __name__=='__main__':
                 #print('share',mso_s.Data_simulated['share'])
                 setting_est['data_col'] = data_col
                 setting_est['data_col_test'] = data_col
-
-                print('++++++++++++++CV++++++++++++++')
-                hypara_cv = {'groups':mso_s.Data_simulated['mktid']}
-                ms_cv = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='GroupKFold',cvsetting=setting_cv,cvhypara=hypara_cv)
-                ms_cv.fit()
-                cv_score[:,r] = ms_cv.score_models
-                        
-                print('++++++++++++++GMM++++++++++++++')
-        
-                ms_gmm = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='InSample',cvsetting=setting_cv,cvhypara=hypara_cv)
-                ms_gmm.fit()
-                gmm_score[:,r] = ms_gmm.score_models
-                         
-                cv_choice[r] = np.where(np.min( cv_score[:,r] )==cv_score[:,r])[0][0]
-                gmm_choice[r] = np.where(np.min( gmm_score[:,r] )==gmm_score[:,r])[0][0]
-                
+                est_warning[model_i,r]=1
+                while est_warning[model_i,r]!=0:
+                    est_warning[model_i,r]=0
+                    print('++++++++++++++CV++++++++++++++')
+                    hypara_cv = {'groups':mso_s.Data_simulated['mktid']}
+                    ms_cv = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='GroupKFold',cvsetting=setting_cv,cvhypara=hypara_cv)
+                    ms_cv.fit()
+                    cv_score[:,r] = ms_cv.score_models
+                    if ms_cv.warning!=0:
+                        est_warning[model_i,r] =ms_cv.warning 
+                    print('++++++++++++++GMM++++++++++++++')
+            
+                    ms_gmm = ModelSelection(EstClass=estimation.EstimateBresnahan, Data_All=Data_All, models=models, setting=setting_est, cvtype='InSample',cvsetting=setting_cv,cvhypara=hypara_cv)
+                    ms_gmm.fit()
+                    if ms_gmm.warning!=0:
+                        est_warning[model_i,r] =ms_gmm.warning 
+                    gmm_score[:,r] = ms_gmm.score_models
+                    
+                    if est_warning[model_i,r]==0:
+                        cv_choice[r] = np.where(np.min( cv_score[:,r] )==cv_score[:,r])[0][0]
+                        gmm_choice[r] = np.where(np.min( gmm_score[:,r] )==gmm_score[:,r])[0][0]                
                 end_rep = time.time()
                 time_rep = end_rep-start_rep
                 print('###########rep %i, time for one rep:%f######################'%(r, time_rep))
                 
-            sys.exit()
+            #sys.exit()
 
             
             cv_cp = np.bincount(cv_choice.astype(int))
@@ -232,9 +253,17 @@ if __name__=='__main__':
                 gmm_cp = np.append(gmm_cp, 0.0)
             cv_choice_p[model_i,:] = cv_cp/rep
             gmm_choice_p[model_i,:] = gmm_cp/rep
+
+            cv_score_mean[model_i,:] = np.mean(cv_score,axis=1).flatten()
+            gmm_score_mean[model_i,:] = np.mean(gmm_score,axis=1).flatten()
+
             
         cv_choice_p_all.append(cv_choice_p)
         gmm_choice_p_all.append(gmm_choice_p)
+        cv_score_mean_all.append(cv_score_mean)
+        gmm_score_mean_all.append(gmm_score_mean)
+        
+        est_warning_all.append(est_warning)
                    
         
     end = time.time()

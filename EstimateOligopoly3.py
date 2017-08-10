@@ -9,7 +9,7 @@ import os
 import csv
 import sys
 import scipy.optimize
-
+import time
 
 class EstimateBresnahan:    
     def __init__(self, data_col=None, data_col_test=None,\
@@ -168,7 +168,15 @@ class EstimateBresnahan:
         
         
         #######
-        self.para_sol = scipy.optimize.fmin(self.make_gmmobj(), x0=init_guess,ftol=1e-6,xtol=1e-6,maxiter=5000000 )
+        start_opt = time.time()
+        print('Optimization start')
+        self.para_sol,_,_,_,warning = scipy.optimize.fmin(self.make_gmmobj(), x0=init_guess,ftol=1e-6,xtol=1e-6,maxiter=1000,full_output=True )
+        if warning!=0:
+            pass
+            #self.para_sol,_,_,_,warning = scipy.optimize.fmin(self.make_gmmobj(), x0=np.random.normal(size=len(init_guess)),ftol=1e-6,xtol=1e-6,maxiter=1000,full_output=True )            
+        self.warning = warning
+        end_opt = time.time()
+        print('Opt time:',end_opt-start_opt)
         #######
         ###################
         #bnd = np.tile( np.array([0,None]), self.nprod).reshape([self.nprod,2])
